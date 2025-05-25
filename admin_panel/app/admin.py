@@ -4,7 +4,7 @@ from .models import Category, Subcategory, Product, Cart, CartItem, Order, Deliv
 
 
 @admin.register(Category)
-class CategoryAdmin(admin.ModelAdmin):
+class CategoriesAdmin(admin.ModelAdmin):
     list_display = ('id', 'title', 'slug', 'is_active',)
     list_filter = ('is_active',)
     search_fields = ('title',)

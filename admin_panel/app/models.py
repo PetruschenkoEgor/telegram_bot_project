@@ -146,4 +146,4 @@ class TelegramUser(models.Model):
         verbose_name_plural = "Пользователи"
 
     def __str__(self):
-        return self.user_id
+        return f'{self.user_id}'

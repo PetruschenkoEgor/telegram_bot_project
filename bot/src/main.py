@@ -1,3 +1,18 @@
+import sys
+import os
+from pathlib import Path
+
+
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+admin_panel_path = BASE_DIR / 'admin_panel'
+app_path = BASE_DIR / 'admin_panel' / 'app'
+
+sys.path.insert(0, str(BASE_DIR))
+sys.path.insert(0, str(BASE_DIR / 'admin_panel'))
+
+from django_setup import setup_django
+setup_django()
+
 import asyncio
 
 from aiogram.types import BotCommand, BotCommandScopeDefault
