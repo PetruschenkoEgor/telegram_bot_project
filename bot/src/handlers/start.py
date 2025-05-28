@@ -3,7 +3,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from bot.src.keyboards.main_menu import get_menu_keyboard
-from bot.src.services.utils import register_user, is_subscribe, AddTaskState, NOT_SUB_MESSAGE, check_sub_kb
+from bot.src.services.utils import register_user, is_subscribe, AddTaskState, NOT_SUB_MESSAGE, check_sub_kb, \
+    get_or_create_cart
 from bot.src.handlers import users
 
 router = Router()
@@ -12,7 +13,7 @@ router.include_router(users.router)
 
 @router.message(F.text == "/start")
 async def cmd_start(message: Message, state: FSMContext):
-    """Реагирует на команду /start."""
+    """Обработчик команды /start."""
 
     await register_user(message.from_user.id)
 
@@ -34,7 +35,7 @@ async def cmd_start(message: Message, state: FSMContext):
 
 @router.callback_query(lambda c: c.data == "check_subscription")
 async def check_subscription(callback: types.CallbackQuery):
-    """Обработка нажатия кнопки 'Проверить подписку'."""
+    """Обработчик нажатия кнопки 'Проверить подписку'."""
 
     if await is_subscribe(callback.from_user.id):
         await callback.message.edit_text("✅ Спасибо за подписку! Теперь вам доступен бот.")
