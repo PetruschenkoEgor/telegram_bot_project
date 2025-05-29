@@ -150,3 +150,27 @@ async def get_checkout_keyboard(cart_id: int, total_price: float):
     builder.adjust(1)
 
     return builder.as_markup()
+
+
+async def confirm_keyboard():
+    """Клавиатура подтверждения заказа."""
+
+    builder = InlineKeyboardBuilder()
+
+    builder.add(InlineKeyboardButton(text="✅ Подтвердить заказ", callback_data="confirm_order"))
+
+    builder.adjust(1)
+
+    return builder.as_markup()
+
+
+async def pay_order(order_id: int, total_price: float):
+    """Клавиатура для перехода оплаты заказа."""
+
+    builder = InlineKeyboardBuilder()
+
+    builder.add(InlineKeyboardButton(text="💵 Оплатить заказ", callback_data=f"order_{order_id}_{total_price}"))
+
+    builder.adjust(1)
+
+    return builder.as_markup()

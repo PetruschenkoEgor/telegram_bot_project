@@ -1,18 +1,23 @@
+from datetime import datetime
 import os
 
 from aiogram import Router, F
 from aiogram.client.session import aiohttp
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, URLInputFile, FSInputFile
+from aiogram.types import CallbackQuery, URLInputFile, FSInputFile, Message, ReplyKeyboardRemove
 from aiohttp import ClientSession
 from asgiref.sync import sync_to_async
 
 from admin_panel.config import settings
 from bot.src.keyboards.main_menu import get_categories_keyboard, get_subcategories_keyboard, get_menu_keyboard, \
-    get_buttons_for_products, get_button_for_cart_item, get_buttons_for_cart_item_delete, get_checkout_keyboard
+    get_buttons_for_products, get_button_for_cart_item, get_buttons_for_cart_item_delete, get_checkout_keyboard, \
+    confirm_keyboard, pay_order
+from bot.src.services.states import DeliveryState
 from bot.src.services.utils import AddTaskState, get_subcategories_page, get_subcategory, \
     get_products_subcategory, get_product, get_or_create_cart_item, get_or_create_cart, register_user, \
-    get_user_telegram, get_cart_items, delete_product_cart_item, delete_all_cart_item, create_an_order
+    get_user_telegram, get_cart_items, delete_product_cart_item, delete_all_cart_item, create_an_order, \
+    save_order_delivery, update_order_status, update_product, get_cart_items_for_user, delete_cart_item
 
 router = Router()
 
@@ -324,32 +329,202 @@ async def get_cart_item(callback: CallbackQuery):
 async def delete_product_from_cart_item(callback: CallbackQuery):
     """Обработчик удаления товара из корзины."""
 
-    data = callback.data.split("_")
-    # id содержимого корзины
-    cart_item_id = int(data[2])
+    try:
+        data = callback.data.split("_")
+        # id содержимого корзины
+        cart_item_id = int(data[2])
 
-    await delete_product_cart_item(cart_item_id)
-    await callback.answer("Товар удален из корзины", show_alert=True)
+        await delete_product_cart_item(cart_item_id)
+        await callback.answer("Товар удален из корзины", show_alert=True)
+    except Exception as e:
+        print(f"Ошибка в обработчике удаления товара из корзины: {e}")
+        await callback.answer("Произошла ошибка при удалении товаров", show_alert=True)
 
 
 @router.callback_query(F.data.startswith("delete_all_cart_"))
 async def delete_all_from_cart_item(callback: CallbackQuery):
     """Обработчик очистки корзины."""
 
-    data = callback.data.split("_")
-    cart_id = int(data[-1])
-    await delete_all_cart_item(cart_id)
-    await callback.answer("Все товары из вашей корзины удалены", show_alert=True)
+    try:
+        data = callback.data.split("_")
+        cart_id = int(data[-1])
+        await delete_all_cart_item(cart_id)
+        await callback.answer("Все товары из вашей корзины удалены", show_alert=True)
+    except Exception as e:
+        print(f"Ошибка в обработчике очистки корзины: {e}")
+        await callback.answer("Произошла ошибка при удалении товаров", show_alert=True)
 
 
 @router.callback_query(F.data.startswith("checkout_"))
-async def get_place_on_order(callback: CallbackQuery):
+async def get_place_on_order(callback: CallbackQuery, state: FSMContext):
     """Обработчик оформления заказа."""
 
+    try:
+        data = callback.data.split("_")
+        total_price = float(data[-1])
+        user_id = callback.from_user.id
+
+        order = await create_an_order(user_id, total_price)
+
+        await state.set_state(DeliveryState.waiting_for_address)
+        await state.update_data(order_id=order.id, total_price=total_price)
+
+        await callback.message.answer(
+            "Оформление доставки\n\n"
+            "Пожалуйста, введите адрес доставки в формате:\n"
+            "Город\n"
+            "Улица, дом, квартира\n"
+            "Пример:\n"
+            "Омск\n"
+            "ул. Ленина, д. 10, кв. 25\n",
+            reply_markup=ReplyKeyboardRemove()
+        )
+
+        await callback.answer()
+    except Exception as e:
+        print(f"Ошибка в обработчике оформления заказа: {e}")
+        await callback.answer("Произошла ошибка при оформлении заказа", show_alert=True)
+
+
+@router.message(DeliveryState.waiting_for_address)
+async def process_address(message: Message, state: FSMContext):
+    """Обработка адреса доставки."""
+
+    try:
+        await state.update_data(delivery_address=message.text)
+        await state.set_state(DeliveryState.waiting_for_phone)
+
+        await message.answer(
+            "Введите ваш контактный телефон для связи:\n\n"
+            "Пример: +79161234567"
+        )
+    except Exception as e:
+        print(f"Ошибка при обработке адреса: {e}")
+        await message.answer("Неверный формат адреса, попробуйте еще раз")
+
+
+@router.message(DeliveryState.waiting_for_phone)
+async def process_phone(message: Message, state: FSMContext):
+    """Обработка номера телефона."""
+
+    try:
+        phone = message.text.strip()
+        if not phone.replace('+', '').isdigit():
+            raise ValueError("Неверный формат телефона")
+
+        await state.update_data(phone=phone)
+        await state.set_state(DeliveryState.waiting_for_comment)
+
+        await message.answer(
+            "Комментарий к заказу"
+        )
+    except Exception as e:
+        print(f"Ошибка при обработке телефона: {e}")
+        await message.answer("Неверный формат телефона, попробуйте еще раз")
+
+
+@router.message(DeliveryState.waiting_for_comment)
+async def process_comment(message: Message, state: FSMContext):
+    """Обработка комментария к заказу."""
+
+    try:
+        await state.update_data(comment=message.text)
+
+        await state.set_state(DeliveryState.waiting_for_delivery_date)
+
+        await message.answer(
+            "Укажите желаемую дату доставки:\n\n"
+            "Формат: ДД.ММ.ГГГГ\n"
+            "Пример: 15.05.2023\n\n"
+        )
+    except Exception as e:
+        print(f"Ошибка при обработке комментария: {e}")
+        await message.answer("Произошла ошибка, попробуйте еще раз")
+
+
+@router.message(DeliveryState.waiting_for_delivery_date)
+async def process_delivery_date(message: Message, state: FSMContext):
+    """Обработка даты доставки."""
+
+    try:
+        delivery_date = datetime.strptime(message.text, '%d.%m.%Y').date()
+        await state.update_data(delivery_date=delivery_date)
+
+        data = await state.get_data()
+
+        order_summary = (
+            "Данные заказа:\n\n"
+            f"Адрес: {data['delivery_address']}\n"
+            f"Телефон: {data.get('phone', 'не указан')}\n"
+            f"Комментарий: {data.get('comment', 'нет')}\n"
+            f"Дата доставки: {delivery_date.strftime('%d.%m.%Y')}\n"
+            f"Сумма заказа: {data['total_price']} руб.\n\n"
+            "Подтвердите оформление заказа:"
+        )
+
+        await message.answer(
+            order_summary,
+            reply_markup=await confirm_keyboard()
+        )
+    except Exception as e:
+        print(f"Ошибка при обработке даты доставки: {e}")
+        await message.answer("Произошла ошибка, попробуйте еще раз")
+
+
+@router.callback_query(F.data == "confirm_order")
+async def confirm_order(callback: CallbackQuery, state: FSMContext):
+    """Подтверждение заказа."""
+
+    try:
+        data = await state.get_data()
+
+        delivery = await save_order_delivery(
+            order_id=data["order_id"],
+            address=data['delivery_address'],
+            phone=data.get('phone', ''),
+            comment=data.get('comment', ''),
+            delivery_date=data.get('delivery_date')
+        )
+
+        order = await update_order_status(data["order_id"], "processing")
+
+        await callback.message.answer(
+            "Ваш заказ оформлен!\n\n"
+            f"Номер заказа: {data['order_id']}\n"
+            "Мы скоро свяжемся с вами для уточнения деталей.",
+            reply_markup=await pay_order(data["order_id"], order.total_price)
+        )
+
+        await state.clear()
+        try:
+            # после подтверждения заказа, получаем содержимое корзины
+            cart_items = await get_cart_items_for_user(callback.from_user.id)
+            try:
+                # после подтверждения заказа, изменяем количество товаров на остатке
+                await update_product(cart_items)
+                try:
+                    # очищаем корзину
+                    await delete_cart_item(callback.from_user.id)
+
+                    await callback.answer()
+                except Exception as e:
+                    print(f"Ошибка очистки корзины: {e}")
+                    await callback.answer("Произошла ошибка при подтверждении заказа", show_alert=True)
+            except Exception as e:
+                print(f"Ошибка изменения количества товаров на остатке: {e}")
+                await callback.answer("Произошла ошибка при подтверждении заказа", show_alert=True)
+        except Exception as e:
+            print(f"Ошибка получения содержимого корзины: {e}")
+            await callback.answer("Произошла ошибка при подтверждении заказа", show_alert=True)
+    except Exception as e:
+        print(f"Ошибка при подтверждении заказа: {e}")
+        await callback.answer("Произошла ошибка при подтверждении заказа", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("order_"))
+async def accept_payment(callback: CallbackQuery):
+    """Обработчик оплаты."""
+
     data = callback.data.split("_")
-    total_price = float(data[-1])
-    user_id = callback.from_user.id
-
-    await create_an_order(user_id, total_price)
-    await callback.answer("Ваш заказ успешно создан", show_alert=True)
-
+    order_id = int(data[1])
+    total_price = float(data[2])

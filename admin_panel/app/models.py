@@ -100,8 +100,14 @@ class Order(models.Model):
         ("cancelled", "Отменен"),
     ]
 
+    PAYMENT_STATUS = [
+        ("paid", "Оплачен"),
+        ("not_paid", "Не оплачен")
+    ]
+
     user = models.ForeignKey("TelegramUser", on_delete=models.CASCADE, related_name="orders", verbose_name="Пользователь")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="new", verbose_name="Статус")
+    status_payment = models.CharField(max_length=10, choices=PAYMENT_STATUS, default="not_paid", verbose_name="Статус оплаты")
     total_price = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Итоговая сумма")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Дата обновления")

@@ -16,6 +16,7 @@ async def cmd_start(message: Message, state: FSMContext):
     """Обработчик команды /start."""
 
     await register_user(message.from_user.id)
+    await get_or_create_cart(message.from_user.id)
 
     if await is_subscribe(message.from_user.id):
         try:

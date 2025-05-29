@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import os
 
 import httpx
@@ -12,7 +13,7 @@ from django.conf import settings
 from django.core.paginator import Paginator
 from django.db import connection
 
-from admin_panel.app.models import TelegramUser, Category, Subcategory, Product, Cart, CartItem, Order
+from admin_panel.app.models import TelegramUser, Category, Subcategory, Product, Cart, CartItem, Order, Delivery
 from bot.src.config.settings import channel_name, group_name, bot, channel
 
 NOT_SUB_MESSAGE = f"""
@@ -182,6 +183,7 @@ def delete_all_cart_item(cart_id: int):
     """Удалить все товары из корзины."""
 
     connection.close()
+
     cart = Cart.objects.get(id=cart_id)
     CartItem.objects.filter(cart=cart).delete()
 
@@ -194,4 +196,71 @@ def create_an_order(user_id: int, total_price: float):
 
     user = TelegramUser.objects.get(user_id=user_id)
 
-    return Order.objects.create(user=user, status="Новый", total_price=total_price)
+    return Order.objects.create(user=user, status="new", total_price=total_price)
+
+
+@sync_to_async
+def save_order_delivery(order_id: int, address: str, phone: str, comment: str, delivery_date: datetime):
+    """Сохранение доставки."""
+
+    connection.close()
+
+    order = Order.objects.get(id=order_id)
+
+    return Delivery.objects.create(order=order, address=address, phone=phone, comment=comment, delivery_date=delivery_date)
+
+
+@sync_to_async
+def update_order_status(order_id: int, status: str):
+    """Обновление статуса заказа."""
+
+    connection.close()
+
+    order = Order.objects.get(id=order_id)
+    order.status = status
+    order.save()
+
+    return order
+
+
+@sync_to_async
+def get_cart_items_for_user(user_id: int):
+    """Получить содержимое корзины по ид пользователя."""
+
+    connection.close()
+
+    user = TelegramUser.objects.get(user_id=user_id)
+    items = list(CartItem.objects.filter(cart__user=user).select_related('product'))
+
+    result = {
+        'items': [
+            {
+                'product_id': item.product.id,
+                'quantity': item.quantity
+            }
+            for item in items
+        ] if items else []
+    }
+
+    return result
+
+
+@sync_to_async
+def update_product(cart_items: list):
+    """Обновляем количество товаров на остатке."""
+
+    connection.close()
+
+    for product in cart_items.get('items'):
+        prod = Product.objects.get(id=product.get('product_id'))
+        prod.stock -= product.get('quantity')
+        prod.save()
+
+
+@sync_to_async
+def delete_cart_item(user_id: int):
+    """Удаляем содержимое корзины по ид пользователя."""
+
+    user = TelegramUser.objects.get(user_id=user_id)
+    cart = Cart.objects.get(user=user)
+    CartItem.objects.filter(cart=cart).delete()
