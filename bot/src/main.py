@@ -3,7 +3,6 @@ from pathlib import Path
 
 
 from bot.src.middlewares.logging_logs import logger
-from bot.src.payment_yookassa.webhook import yookassa_webhook
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 admin_panel_path = BASE_DIR / "admin_panel"
@@ -51,12 +50,6 @@ async def stop_bot():
             await bot.send_message(admin_id, "Бот остановлен!")
     except Exception as e:
         logger.error(f"Ошибка {e}")
-
-
-async def start_webhook(app):
-    """Запуск webhookа."""
-
-    app.router.add_post("/yookassa-webhook", yookassa_webhook)
 
 
 async def main():

@@ -79,7 +79,7 @@ async def get_subcategories_keyboard(category_id: int, page: int = 1):
     return builder.as_markup()
 
 
-async def get_buttons_for_products(product_id: int, quantity: int = 1):
+async def get_buttons_for_products(product_id: int, quantity: int = 0):
     """Клавиатура товаров."""
 
     builder = InlineKeyboardBuilder()
