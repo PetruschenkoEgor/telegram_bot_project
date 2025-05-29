@@ -14,8 +14,26 @@ aiogram = "^3.20.0.post0"
 pillow = "^11.2.1"
 psycopg2-binary = "^2.9.10"
 httpx = "^0.28.1"
+pandas = "^2.2.3"
 
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 119
+include = '\.pyi?$'  # Форматировать только .py и .pyi файлы
+exclude = '''
+/(
+    \.git
+  | \.venv
+  | __pycache__
+  | \.mypy_cache
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 119
+multi_line_output = 3  # Красивое оформление многострочных импортов

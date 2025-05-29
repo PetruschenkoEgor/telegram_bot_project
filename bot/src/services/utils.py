@@ -1,20 +1,15 @@
-import asyncio
 import datetime
-import os
-
-import httpx
 
 from aiogram import types
-from aiogram.fsm.state import StatesGroup, State
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from aiohttp import ClientConnectionError
 from asgiref.sync import sync_to_async
-from django.conf import settings
 from django.core.paginator import Paginator
 from django.db import connection
 
-from admin_panel.app.models import TelegramUser, Category, Subcategory, Product, Cart, CartItem, Order, Delivery
-from bot.src.config.settings import channel_name, group_name, bot, channel
+from admin_panel.app.models import Cart, CartItem, Category, Delivery, Order, Product, Subcategory, TelegramUser
+from bot.src.config.settings import bot, channel, channel_name, group_name
+from bot.src.middlewares.logging_logs import logger
 
 NOT_SUB_MESSAGE = f"""
 ⚠️ Для доступа к боту подпишитесь на:
@@ -23,9 +18,18 @@ NOT_SUB_MESSAGE = f"""
 После подписки нажмите **«Проверить подписку»**.
 """
 
+FAQ = {
+    "доставка": "Доставка осуществляется в течение 2-3 рабочих дней.",
+    "оплата": "Мы принимаем карты, электронные кошельки и наличные при самовывозе.",
+    "возврат": "Возврат возможен в течение 14 дней с момента покупки.",
+    "гарантия": "Гарантия на все товары составляет 1 год.",
+    "контакты": "Наши контакты: +7 (123) 456-78-90, email@example.com",
+}
+
 
 class AddTaskState(StatesGroup):
     """Состояние ожидания."""
+
     waiting_for_task = State()
 
 
@@ -33,10 +37,7 @@ def check_sub_kb():
     """Кнопка проверить подписку."""
 
     builder = InlineKeyboardBuilder()
-    builder.add(types.InlineKeyboardButton(
-        text="✅ Проверить подписку",
-        callback_data="check_subscription")
-    )
+    builder.add(types.InlineKeyboardButton(text="✅ Проверить подписку", callback_data="check_subscription"))
     return builder.as_markup()
 
 
@@ -47,9 +48,9 @@ async def is_subscribe(user_id: int):
         channel_subscribe = await bot.get_chat_member(channel, user_id)
         # group_subscribe = await bot.get_chat_member(group, user_id)
         return channel_subscribe.status in ["member", "administrator", "creator"]
-                # group_subscribe.status in ["member", "administrator", "creator"])
+        # group_subscribe.status in ["member", "administrator", "creator"])
     except Exception as e:
-        print(f"Ошибка проверки подписки: {e}")
+        logger.error(f"Ошибка проверки подписки: {e}")
         return False
 
 
@@ -67,14 +68,11 @@ def get_categories_page(page: int = 1, per_page: int = 5):
     """Получение категорий с пагинацией."""
 
     connection.close()
-    categories = Category.objects.filter(is_active=True).order_by('id')
+    categories = Category.objects.filter(is_active=True).order_by("id")
     paginator = Paginator(categories, per_page)
     page_obj = paginator.get_page(page)
 
-    return {
-        'page_obj': page_obj,
-        'object_list': list(page_obj.object_list.values('id', 'title'))
-    }
+    return {"page_obj": page_obj, "object_list": list(page_obj.object_list.values("id", "title"))}
 
 
 @sync_to_async
@@ -82,17 +80,11 @@ def get_subcategories_page(category_id: int, page: int = 1, per_page: int = 5):
     """Получение подкатегорий с пагинацией."""
 
     connection.close()
-    subcategories = Subcategory.objects.filter(
-        is_active=True,
-        category_id=category_id
-    ).order_by('id')
+    subcategories = Subcategory.objects.filter(is_active=True, category_id=category_id).order_by("id")
     paginator = Paginator(subcategories, per_page)
     page_obj = paginator.get_page(page)
 
-    return {
-        'page_obj': page_obj,
-        'object_list': list(page_obj.object_list.values('id', 'title'))
-    }
+    return {"page_obj": page_obj, "object_list": list(page_obj.object_list.values("id", "title"))}
 
 
 @sync_to_async
@@ -110,10 +102,7 @@ def get_products_subcategory(subcategory_id: int):
     """Получение товаров с изображениями"""
 
     connection.close()
-    products = Product.objects.filter(
-        subcategory_id=subcategory_id,
-        is_active=True
-    )
+    products = Product.objects.filter(subcategory_id=subcategory_id, is_active=True)
     return list(products)
 
 
@@ -133,7 +122,7 @@ def get_or_create_cart_item(cart: Cart, product: Product, quantity: int):
     """Получить или создать содержимое корзины."""
 
     connection.close()
-    cart_item, created = CartItem.objects.get_or_create(cart=cart, product=product, defaults={'quantity': quantity})
+    cart_item, created = CartItem.objects.get_or_create(cart=cart, product=product, defaults={"quantity": quantity})
     if not created:
         cart_item.quantity = quantity
         cart_item.save()
@@ -207,7 +196,9 @@ def save_order_delivery(order_id: int, address: str, phone: str, comment: str, d
 
     order = Order.objects.get(id=order_id)
 
-    return Delivery.objects.create(order=order, address=address, phone=phone, comment=comment, delivery_date=delivery_date)
+    return Delivery.objects.create(
+        order=order, address=address, phone=phone, comment=comment, delivery_date=delivery_date
+    )
 
 
 @sync_to_async
@@ -230,16 +221,22 @@ def get_cart_items_for_user(user_id: int):
     connection.close()
 
     user = TelegramUser.objects.get(user_id=user_id)
-    items = list(CartItem.objects.filter(cart__user=user).select_related('product'))
+    items = list(CartItem.objects.filter(cart__user=user).select_related("product"))
 
     result = {
-        'items': [
-            {
-                'product_id': item.product.id,
-                'quantity': item.quantity
-            }
-            for item in items
-        ] if items else []
+        "items": (
+            [
+                {
+                    "product_id": item.product.id,
+                    "title": item.product.title,
+                    "price": item.product.price,
+                    "quantity": item.quantity,
+                }
+                for item in items
+            ]
+            if items
+            else []
+        )
     }
 
     return result
@@ -251,9 +248,9 @@ def update_product(cart_items: list):
 
     connection.close()
 
-    for product in cart_items.get('items'):
-        prod = Product.objects.get(id=product.get('product_id'))
-        prod.stock -= product.get('quantity')
+    for product in cart_items.get("items"):
+        prod = Product.objects.get(id=product.get("product_id"))
+        prod.stock -= product.get("quantity")
         prod.save()
 
 
@@ -264,3 +261,21 @@ def delete_cart_item(user_id: int):
     user = TelegramUser.objects.get(user_id=user_id)
     cart = Cart.objects.get(user=user)
     CartItem.objects.filter(cart=cart).delete()
+
+
+@sync_to_async
+def update_order_status_payment(order_id: int):
+    """Обновление статуса оплаты заказа."""
+
+    order = Order.objects.get(id=order_id)
+    order.status_payment = "paid"
+    order.save()
+
+
+@sync_to_async
+def get_order_status_payment(order_id: int):
+    """Получение статуса оплаты заказа."""
+
+    order = Order.objects.get(id=order_id)
+
+    return order.status_payment

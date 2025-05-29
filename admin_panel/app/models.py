@@ -20,7 +20,9 @@ class Category(models.Model):
 class Subcategory(models.Model):
     """Модель Подкатегория."""
 
-    category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name="subcategories", verbose_name="Категория")
+    category = models.ForeignKey(
+        Category, on_delete=models.CASCADE, related_name="subcategories", verbose_name="Категория"
+    )
     title = models.CharField(max_length=100, verbose_name="Подкатегория")
     slug = models.SlugField(max_length=100, unique=True, verbose_name="URL-идентификатор")
     is_active = models.BooleanField(default=True, verbose_name="Активна")
@@ -36,7 +38,9 @@ class Subcategory(models.Model):
 class Product(models.Model):
     """Модель Продукт."""
 
-    subcategory = models.ForeignKey(Subcategory, on_delete=models.CASCADE, related_name="products", verbose_name="Подкатегория")
+    subcategory = models.ForeignKey(
+        Subcategory, on_delete=models.CASCADE, related_name="products", verbose_name="Подкатегория"
+    )
     title = models.CharField(max_length=200, verbose_name="Название товара")
     slug = models.SlugField(max_length=200, unique=True, verbose_name="URL-идентификатор")
     description = models.TextField(blank=True, null=True, verbose_name="Описание")
@@ -59,10 +63,7 @@ class Cart(models.Model):
     """Модель Корзина."""
 
     user = models.OneToOneField(
-        "TelegramUser",
-        on_delete=models.CASCADE,
-        related_name="cart",
-        verbose_name="Пользователь"
+        "TelegramUser", on_delete=models.CASCADE, related_name="cart", verbose_name="Пользователь"
     )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
 
@@ -100,14 +101,15 @@ class Order(models.Model):
         ("cancelled", "Отменен"),
     ]
 
-    PAYMENT_STATUS = [
-        ("paid", "Оплачен"),
-        ("not_paid", "Не оплачен")
-    ]
+    PAYMENT_STATUS = [("paid", "Оплачен"), ("not_paid", "Не оплачен")]
 
-    user = models.ForeignKey("TelegramUser", on_delete=models.CASCADE, related_name="orders", verbose_name="Пользователь")
+    user = models.ForeignKey(
+        "TelegramUser", on_delete=models.CASCADE, related_name="orders", verbose_name="Пользователь"
+    )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="new", verbose_name="Статус")
-    status_payment = models.CharField(max_length=10, choices=PAYMENT_STATUS, default="not_paid", verbose_name="Статус оплаты")
+    status_payment = models.CharField(
+        max_length=10, choices=PAYMENT_STATUS, default="not_paid", verbose_name="Статус оплаты"
+    )
     total_price = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Итоговая сумма")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Дата обновления")
@@ -153,4 +155,4 @@ class TelegramUser(models.Model):
         verbose_name_plural = "Пользователи"
 
     def __str__(self):
-        return f'{self.user_id}'
+        return f"{self.user_id}"
