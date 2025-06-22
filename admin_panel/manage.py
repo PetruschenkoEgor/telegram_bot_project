@@ -1,12 +1,22 @@
 #!/usr/bin/env python
 """Django's command-line utility for administrative tasks."""
+import sys
+from pathlib import Path
 import os
 import sys
 
 
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Добавляем корень проекта в PYTHONPATH
+BASE_DIR = Path(__file__).resolve().parent.parent  # Поднимаемся на уровень выше admin_panel
+sys.path.append(str(BASE_DIR))
+import os
+
+
 def main():
     """Run administrative tasks."""
-    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
     try:
         from django.core.management import execute_from_command_line
     except ImportError as exc:
@@ -18,5 +28,5 @@ def main():
     execute_from_command_line(sys.argv)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
