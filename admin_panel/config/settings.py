@@ -2,6 +2,10 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
+import sys
+
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 

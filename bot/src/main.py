@@ -1,8 +1,11 @@
 import sys
 from pathlib import Path
 
+try:
+    from middlewares.logging_logs import logger
+except ImportError:
+    from .middlewares.logging_logs import logger
 
-from bot.src.middlewares.logging_logs import logger
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 admin_panel_path = BASE_DIR / "admin_panel"
@@ -20,7 +23,7 @@ import asyncio
 from aiogram.types import BotCommand, BotCommandScopeDefault
 
 from bot.src.config.settings import admins, bot, dp
-from bot.src.handlers.start import router
+from handlers.start import router
 
 
 async def set_commands():

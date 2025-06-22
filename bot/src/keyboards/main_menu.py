@@ -11,6 +11,7 @@ def get_menu_keyboard():
     builder.add(InlineKeyboardButton(text="Каталог", callback_data="catalog"))
     builder.add(InlineKeyboardButton(text="Корзина", callback_data="show_cart"))
     builder.add(InlineKeyboardButton(text="FAQ", callback_data="faq"))
+    builder.add(InlineKeyboardButton(text="Спросить бота", callback_data="bot"))
     builder.adjust(1)
 
     return builder.as_markup()

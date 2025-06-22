@@ -2,6 +2,11 @@
 """Django's command-line utility for administrative tasks."""
 import sys
 from pathlib import Path
+import os
+import sys
+
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Добавляем корень проекта в PYTHONPATH
 BASE_DIR = Path(__file__).resolve().parent.parent  # Поднимаемся на уровень выше admin_panel

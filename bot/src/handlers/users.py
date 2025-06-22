@@ -1,8 +1,9 @@
+import asyncio
 import os
 from datetime import datetime
 
 import pandas as pd
-from aiogram import F, Router
+from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
     CallbackQuery,
@@ -16,6 +17,7 @@ from aiogram.types import (
 from asgiref.sync import sync_to_async
 
 from admin_panel.config import settings
+from bot.src.config.settings import bot
 from bot.src.keyboards.main_menu import (
     confirm_keyboard,
     get_button_for_cart_item,
@@ -47,8 +49,15 @@ from bot.src.services.utils import (
     get_subcategory,
     save_order_delivery,
     update_order_status,
-    update_product,
+    update_product, GigaChatAPI
 )
+
+
+# Настройки ограничения запросов
+USER_COOLDOWN = {}
+COOLDOWN_TIME = 5  # секунд между запросами
+
+gigachat = GigaChatAPI()
 
 router = Router()
 
@@ -610,3 +619,76 @@ async def show_all_faq(callback: CallbackQuery):
     except Exception as e:
         logger.error(f"Ошибка загрузки вопросов: {e}")
         await callback.answer("Ошибка при загрузке вопросов", show_alert=True)
+
+
+@router.callback_query(F.data == "bot")
+async def command_ask_the_bot(callback: CallbackQuery):
+    """Обработчик команды спросить бота."""
+
+    try:
+        await callback.message.answer("Привет! Я умный бот, напиши свой вопрос, и я постараюсь помочь!")
+        await callback.answer()
+    except Exception as e:
+        logger.error(f"Ошибка команды спросить бота: {e}")
+        await callback.answer("Произошла ошибка, попробуйте позже.", show_alert=True)
+
+
+# @router.message(F.text)
+# async def handle_text_message(message: Message):
+#     """Обработчик текстовых сообщений."""
+#
+#     user_id = message.from_user.id
+#     now = datetime.now()
+#
+#     # Проверка кулдауна
+#     if user_id in USER_COOLDOWN and now < USER_COOLDOWN[user_id]:
+#         remaining = (USER_COOLDOWN[user_id] - now).seconds
+#         await message.answer(f"⏳ Подождите {remaining} секунд перед новым запросом")
+#         return
+#
+#     USER_COOLDOWN[user_id] = now + timedelta(seconds=COOLDOWN_TIME)
+#
+#     # Показываем статус "печатает"
+#     await message.bot.send_chat_action(message.chat.id, 'typing')
+#
+#     try:
+#         # Отправляем запрос к DeepSeek
+#         response = await call_deepseek_api(message.text, message.message_id)
+#         if response is None:
+#             raise ValueError("API вернул пустой ответ")
+#
+#         await message.answer(response)
+#     except Exception as e:
+#         logger.error(f"Ошибка при обработке сообщения: {e}")
+#         await message.answer("⚠️ Произошла ошибка при обработке вашего запроса. Пожалуйста, попробуйте позже.")
+#     # if response:
+#     #     # Отправляем ответ с клавиатурой действий
+#     #     await message.reply(
+#     #         response,
+#     #         reply_markup=build_deepseek_keyboard()
+#     #     )
+#     # else:
+#     #     await message.reply("⚠️ Не удалось получить ответ от DeepSeek API")
+
+@router.message()
+async def handle_message(message: types.Message):
+    try:
+        await message.bot.send_chat_action(message.chat.id, 'typing')
+
+        response = await gigachat.send_message(message.text)
+
+        if response:
+            # Разбиваем длинные сообщения на части (Telegram ограничение 4096 символов)
+            if len(response) > 4000:
+                parts = [response[i:i + 4000] for i in range(0, len(response), 4000)]
+                for part in parts:
+                    await message.reply(part)
+                    await asyncio.sleep(1)  # Задержка между сообщениями
+            else:
+                await message.reply(response)
+        else:
+            await message.reply("⚠️ Не удалось получить ответ от GigaChat. Попробуйте позже.")
+
+    except Exception as e:
+        logger.error(f"Ошибка в обработчике сообщений: {str(e)}")
+        await message.reply("❌ Произошла внутренняя ошибка. Пожалуйста, попробуйте еще раз.")

@@ -1,5 +1,12 @@
+import base64
 import datetime
+import os
+import time
+import uuid
+from typing import Optional
 
+import aiohttp
+import requests
 from aiogram import types
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -8,7 +15,7 @@ from django.core.paginator import Paginator
 from django.db import connection
 
 from admin_panel.app.models import Cart, CartItem, Category, Delivery, Order, Product, Subcategory, TelegramUser
-from bot.src.config.settings import bot, channel, channel_name, group_name
+from bot.src.config.settings import bot, channel, channel_name, group_name, GIGACHAT_CLIENT_ID, GIGACHAT_CLIENT_SECRET
 from bot.src.middlewares.logging_logs import logger
 
 NOT_SUB_MESSAGE = f"""
@@ -25,6 +32,9 @@ FAQ = {
     "гарантия": "Гарантия на все товары составляет 1 год.",
     "контакты": "Наши контакты: +7 (123) 456-78-90, email@example.com",
 }
+
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+DEEPSEEK_API_URL = os.getenv("DEEPSEEK_API_URL")
 
 
 class AddTaskState(StatesGroup):
@@ -279,3 +289,129 @@ def get_order_status_payment(order_id: int):
     order = Order.objects.get(id=order_id)
 
     return order.status_payment
+
+
+async def call_deepseek_api(prompt: str, message_id: int = None) -> str:
+    """Callback-функция для запроса к DeepSeek API"""
+    headers = {
+        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "model": "deepseek-chat",
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.7,
+        "max_tokens": 2000
+    }
+
+    if message_id:
+        payload["message_id"] = str(message_id)
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(DEEPSEEK_API_URL, json=payload, headers=headers) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return data['choices'][0]['message']['content']
+                error = await response.text()
+                logger.error(f"DeepSeek API error: {error}")
+                return "⚠️ Произошла ошибка API. Пожалуйста, попробуйте позже."
+    except aiohttp.ClientError as e:
+        logger.error(f"Ошибка соединения: {e}")
+        return "⚠️ Проблемы с соединением. Пожалуйста, попробуйте позже."
+    except Exception as e:
+        logger.error(f"Неожиданная ошибка: {e}")
+        return "⚠️ Произошла непредвиденная ошибка."
+
+
+class GigaChatAPI:
+    def __init__(self):
+        self.client_id = os.getenv('GIGACHAT_CLIENT_ID')
+        self.client_secret = os.getenv('GIGACHAT_CLIENT_SECRET')
+        self.access_token = None
+        self.token_expires = 0
+        self.verify_ssl = False  # В продакшене должно быть True
+
+        if not self.client_id or not self.client_secret:
+            raise ValueError("GIGACHAT_CLIENT_ID и GIGACHAT_CLIENT_SECRET должны быть установлены в .env")
+
+    def _get_auth_header(self) -> str:
+        """Формирование Basic Auth заголовка"""
+        auth_str = f"{self.client_id}:{self.client_secret}"
+        return base64.b64encode(auth_str.encode()).decode()
+
+    async def _get_access_token(self) -> str:
+        """Получение нового токена доступа"""
+        try:
+            auth_url = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"
+
+            headers = {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Accept': 'application/json',
+                'RqUID': str(uuid.uuid4()),
+                'Authorization': f'Basic {self._get_auth_header()}',
+            }
+
+            data = {'scope': 'GIGACHAT_API_PERS'}
+
+            response = requests.post(
+                auth_url,
+                headers=headers,
+                data=data
+            )
+
+            response.raise_for_status()
+            token_data = response.json()
+
+            self.access_token = token_data.get('access_token')
+            if not self.access_token:
+                raise ValueError("Не удалось получить access_token")
+
+            expires_in = token_data.get('expires_in', 3600)
+            self.token_expires = time.time() + expires_in - 300  # 5 минут запаса
+
+            return self.access_token
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Ошибка при получении токена: {str(e)}")
+            if e.response is not None:
+                logger.error(f"Статус код: {e.response.status_code}")
+                logger.error(f"Ответ сервера: {e.response.text}")
+            raise
+
+    async def send_message(self, prompt: str) -> Optional[str]:
+        """Отправка запроса к GigaChat API"""
+        try:
+            if not self.access_token or time.time() >= self.token_expires:
+                await self._get_access_token()
+
+            url = "https://gigachat.devices.sberbank.ru/api/v1/chat/completions"
+
+            headers = {
+                'Accept': 'application/json',
+                'Authorization': f'Bearer {self.access_token}'
+            }
+
+            data = {
+                "model": "GigaChat",
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.7,
+                "max_tokens": 1000
+            }
+
+            response = requests.post(
+                url,
+                headers=headers,
+                json=data
+            )
+
+            response.raise_for_status()
+            return response.json()['choices'][0]['message']['content']
+
+        except Exception as e:
+            logger.error(f"Ошибка при запросе к GigaChat: {str(e)}")
+            if hasattr(e, 'response') and e.response is not None:
+                logger.error(f"Статус код: {e.response.status_code}")
+                logger.error(f"Ответ сервера: {e.response.text}")
+            return None
